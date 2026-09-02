@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Communication Tracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#fff;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;}
+.app{max-width:700px;margin:0 auto;padding:1.5rem 1.25rem 4rem;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid #e8e8e8;margin-bottom:1.25rem;flex-wrap:wrap;gap:8px;}
+.app-name{font-size:13px;font-weight:500;color:#555;}
+.topbar-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.score-pill{font-size:12px;color:#888;padding:3px 8px;border:1px solid #e0e0e0;border-radius:20px;}
+.streak-pill{font-size:12px;padding:3px 8px;border-radius:20px;background:#fff8e6;color:#b07800;border:1px solid #f0d080;font-weight:500;}
+.sync-st{font-size:11px;color:#aaa;} .sync-st.ok{color:#2d7a2d;} .sync-st.err{color:#c0392b;}
+.topbar-right{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+.tab-row{display:flex;gap:2px;}
+.tbtab{font-size:12px;padding:4px 10px;border-radius:20px;border:none;background:transparent;color:#aaa;cursor:pointer;}
+.tbtab.on{background:#f2f2f2;color:#1a1a1a;font-weight:500;}
+.icon-btn{font-size:12px;padding:4px 10px;border:1px solid #e0e0e0;border-radius:6px;background:#fff;color:#555;cursor:pointer;}
+.icon-btn:hover{border-color:#bbb;}
+.pane{display:none;} .pane.on{display:block;}
+
+/* daily banner */
+.daily-banner{border-radius:10px;padding:12px 16px;margin-bottom:1.25rem;border:1px solid;}
+.db-ok{background:#f0faf0;border-color:#b7ddb7;}
+.db-warn{background:#fff8e6;border-color:#f0d080;}
+.db-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+.db-title-ok{font-size:13px;font-weight:500;color:#2d7a2d;}
+.db-title-warn{font-size:13px;font-weight:500;color:#b07800;}
+.db-sub{font-size:12px;color:#888;}
+.quota-bar{height:4px;background:#e8e8e8;border-radius:2px;margin-top:8px;overflow:hidden;}
+.quota-fill{height:100%;border-radius:2px;background:#2d7a2d;transition:width .3s;}
+
+/* progress dots */
+.prog-row{display:flex;gap:3px;margin-bottom:1rem;}
+.pdot{height:2px;flex:1;border-radius:1px;background:#e8e8e8;}
+.pdot.done{background:#aaa;} .pdot.cur{background:#555;}
+
+/* scene box */
+.scene-box{border:1px solid #e8e8e8;border-radius:10px;padding:1rem 1.25rem;margin-bottom:.875rem;background:#fafafa;}
+.scene-meta{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.cat-chip{font-size:11px;padding:2px 7px;border-radius:20px;border:1px solid #e0e0e0;color:#666;background:#fff;}
+.box-chip{font-size:11px;padding:2px 7px;border-radius:20px;font-weight:600;}
+.box-1{background:#fff0f0;color:#c0392b;border:1px solid #f0b0b0;}
+.box-2{background:#fff8e6;color:#b07800;border:1px solid #f0d080;}
+.box-3{background:#f0f8ff;color:#2255cc;border:1px solid #b0d0f0;}
+.box-4{background:#f0faf0;color:#2d7a2d;border:1px solid #b0d8b0;}
+.box-5{background:#f5f0ff;color:#6633cc;border:1px solid #c8b0f0;}
+.retry-chip{font-size:11px;padding:2px 7px;border-radius:20px;background:#fff8e6;color:#b07800;border:1px solid #f0d080;}
+.sender-label{font-size:11px;color:#aaa;margin-bottom:3px;}
+.scene-en{font-size:14px;color:#1a1a1a;line-height:1.6;margin-bottom:8px;}
+
+/* vi sub-item */
+.vi-sub-label{font-size:11px;color:#aaa;margin-bottom:3px;}
+.vi-target{font-size:13px;color:#444;background:#fff;border:1px solid #d8e8ff;border-radius:6px;padding:7px 11px;line-height:1.5;margin-bottom:10px;}
+.vi-num{font-size:11px;color:#aaa;margin-right:4px;}
+
+/* ground truth */
+.gt-box{background:#f0faf0;border:1px solid #b7ddb7;border-radius:6px;padding:8px 12px;margin-bottom:8px;}
+.gt-label{font-size:11px;color:#2d7a2d;margin-bottom:4px;}
+.gt-item{font-size:13px;color:#1a4d2e;font-style:italic;line-height:1.5;margin-bottom:2px;}
+
+/* sub-progress (within a scenario) */
+.sub-prog{display:flex;gap:4px;margin-bottom:10px;}
+.sub-dot{height:6px;flex:1;border-radius:3px;background:#e8e8e8;}
+.sub-dot.pass{background:#2d7a2d;}
+.sub-dot.fail{background:#f0b0b0;}
+.sub-dot.cur{background:#555;}
+
+/* input */
+.attempt-note{font-size:12px;color:#b07800;margin-bottom:6px;}
+.err-line{font-size:12px;color:#c0392b;min-height:16px;margin-bottom:4px;}
+textarea{width:100%;min-height:72px;padding:10px 12px;font-size:14px;font-family:inherit;line-height:1.55;border:1px solid #d0d0d0;border-radius:8px;background:#fff;color:#1a1a1a;resize:vertical;outline:none;}
+textarea:focus{border-color:#999;}
+textarea:disabled{opacity:.45;background:#f5f5f5;}
+.ifoot{display:flex;align-items:center;justify-content:space-between;margin:6px 0 1rem;}
+.hint-key{font-size:11px;color:#bbb;}
+.send-btn{font-size:13px;padding:7px 18px;border:1px solid #c0c0c0;border-radius:6px;background:#fff;color:#1a1a1a;cursor:pointer;font-weight:500;}
+.send-btn:hover{background:#f5f5f5;} .send-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* feedback */
+.fb-box{border-radius:10px;padding:1rem 1.25rem;margin-bottom:.75rem;border:1px solid;}
+.fb-box.pass{border-color:#b7ddb7;background:#f0faf0;}
+.fb-box.warn{border-color:#f0d080;background:#fff8e6;}
+.fb-box.fail{border-color:#f0b0b0;background:#fff0f0;}
+.fb-top{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;}
+.fb-score{font-size:20px;font-weight:500;}
+.fb-box.pass .fb-score{color:#2d7a2d;} .fb-box.warn .fb-score{color:#b07800;} .fb-box.fail .fb-score{color:#c0392b;}
+.fb-verdict{font-size:13px;color:#666;}
+.fb-move{font-size:12px;font-weight:500;margin-top:6px;padding:4px 10px;border-radius:6px;display:inline-block;}
+.fb-move.up{background:#f0faf0;color:#2d7a2d;border:1px solid #b7ddb7;}
+.fb-move.down{background:#fff0f0;color:#c0392b;border:1px solid #f0b0b0;}
+.fb-move.mastered{background:#f5f0ff;color:#6633cc;border:1px solid #c8b0f0;}
+.fb-sec{margin-top:8px;}
+.fb-lbl{font-size:11px;color:#aaa;margin-bottom:3px;}
+.fb-txt{font-size:13px;color:#1a1a1a;line-height:1.55;}
+.suggestion{background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;font-size:13px;color:#2255cc;font-style:italic;margin-top:4px;line-height:1.5;}
+.retry-note{font-size:12px;color:#b07800;margin-top:8px;}
+.act-row{display:flex;gap:6px;margin-top:.75rem;}
+.btn-rewrite{flex:1;padding:8px;font-size:13px;font-weight:500;border:1px solid #c0c0c0;border-radius:6px;background:#fff;color:#1a1a1a;cursor:pointer;}
+.btn-rewrite:hover{background:#f5f5f5;}
+.btn-next{flex:1;padding:8px;font-size:13px;border:1px solid #e0e0e0;border-radius:6px;background:transparent;color:#666;cursor:pointer;}
+.btn-next:hover{background:#f5f5f5;}
+
+/* loading */
+.loading-row{display:flex;align-items:center;gap:8px;padding:.5rem 0;}
+.spin{width:14px;height:14px;border:1.5px solid #e0e0e0;border-top-color:#888;border-radius:50%;animation:sp .7s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg);}}
+.spin-txt{font-size:13px;color:#aaa;}
+
+/* done */
+.done-wrap{text-align:center;padding:2.5rem 1rem;}
+.done-score{font-size:40px;font-weight:500;color:#1a1a1a;}
+.done-sub{font-size:13px;color:#aaa;margin-bottom:1rem;}
+.done-msg{font-size:14px;color:#555;margin-bottom:1.5rem;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto;}
+.restart-btn{padding:8px 22px;font-size:13px;border:1px solid #c0c0c0;border-radius:6px;background:#fff;color:#1a1a1a;cursor:pointer;font-weight:500;}
+
+/* review boxes grid */
+.boxes-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:1rem;}
+.box-card{border-radius:8px;padding:10px 8px;text-align:center;border:1px solid;}
+.box-card-num{font-size:12px;font-weight:600;}
+.box-card-count{font-size:22px;font-weight:500;margin:2px 0;}
+.box-card-freq{font-size:10px;opacity:.8;}
+.b1c{background:#fff0f0;border-color:#f0b0b0;color:#c0392b;}
+.b2c{background:#fff8e6;border-color:#f0d080;color:#b07800;}
+.b3c{background:#f0f8ff;border-color:#b0d0f0;color:#2255cc;}
+.b4c{background:#f0faf0;border-color:#b0d8b0;color:#2d7a2d;}
+.b5c{background:#f5f0ff;border-color:#c8b0f0;color:#6633cc;}
+.mastered-row{text-align:center;padding:6px;font-size:13px;color:#6633cc;margin-bottom:1rem;}
+
+/* log */
+.log-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;}
+.log-title{font-size:13px;font-weight:500;color:#555;}
+.clr-btn{font-size:11px;padding:4px 8px;border:1px solid #e0e0e0;border-radius:4px;background:transparent;color:#aaa;cursor:pointer;}
+.clr-btn:hover{color:#c0392b;border-color:#f0b0b0;}
+.log-empty{text-align:center;padding:2rem;font-size:13px;color:#aaa;}
+.log-sec-title{font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin:1rem 0 6px;}
+.log-item{border:1px solid #e8e8e8;border-radius:8px;padding:.75rem 1rem;margin-bottom:6px;}
+.log-item-top{display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;}
+.log-date{font-size:11px;color:#bbb;margin-left:auto;}
+.log-en{font-size:13px;color:#1a1a1a;margin-bottom:2px;line-height:1.5;}
+.log-vi{font-size:12px;color:#666;margin-bottom:4px;font-style:italic;}
+.log-meta{font-size:12px;color:#aaa;}
+.log-meta b{color:#555;font-weight:500;}
+.log-item.mastered-item{opacity:.5;}
+
+/* banner */
+.banner{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:1rem;}
+.banner.warn{background:#fff8e6;border:1px solid #f0d080;color:#b07800;}
+.banner a{color:#b07800;font-weight:500;}
+.empty-session{text-align:center;padding:2rem;}
+.empty-session p{font-size:14px;color:#555;margin-bottom:1rem;line-height:1.6;}
+
+/* modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:100;align-items:center;justify-content:center;}
+.modal-bg.open{display:flex;}
+.modal{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:1.5rem;width:90%;max-width:480px;}
+.modal h3{font-size:15px;font-weight:500;margin-bottom:6px;}
+.modal p{font-size:13px;color:#666;margin-bottom:10px;line-height:1.55;}
+.modal ol{font-size:13px;color:#444;margin:0 0 12px 18px;line-height:1.8;}
+.modal ol a{color:#2255cc;}
+.modal input{width:100%;padding:9px 12px;font-size:13px;border:1px solid #d0d0d0;border-radius:6px;font-family:monospace;outline:none;margin-bottom:12px;}
+.modal input:focus{border-color:#999;}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;}
+.mbtn-cancel{padding:7px 14px;font-size:13px;border:1px solid #e0e0e0;border-radius:6px;background:#fff;color:#666;cursor:pointer;}
+.mbtn-save{padding:7px 14px;font-size:13px;border:none;border-radius:6px;background:#1a1a1a;color:#fff;cursor:pointer;font-weight:500;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="app-name">Communication tracker</span>
+      <span class="score-pill" id="score-pill">0 pts</span>
+      <span class="streak-pill" id="streak-pill">🔥 0 ngày</span>
+      <span class="sync-st" id="sync-st"></span>
+    </div>
+    <div class="topbar-right">
+      <div class="tab-row">
+        <button class="tbtab on" onclick="goTab('train',this)">Practice</button>
+        <button class="tbtab" onclick="goTab('review',this)">Review <span id="review-badge"></span></button>
+        <button class="tbtab" onclick="goTab('log',this)">Log</button>
+      </div>
+      <button class="icon-btn" onclick="openModal('gemini')">Gemini key</button>
+      <button class="icon-btn" onclick="openModal('sheets')">Sheets URL</button>
+    </div>
+  </div>
+  <div id="pane-train" class="pane on"></div>
+  <div id="pane-review" class="pane"></div>
+  <div id="pane-log"   class="pane"></div>
+</div>
+
+<!-- modals -->
+<div class="modal-bg" id="modal-gemini">
+  <div class="modal">
+    <h3>Gemini API key</h3>
+    <p>Free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>.</p>
+    <input type="password" id="gemini-input" placeholder="AIza..."/>
+    <div class="modal-btns"><button class="mbtn-cancel" onclick="closeModal('gemini')">Cancel</button><button class="mbtn-save" onclick="saveGemini()">Save</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="modal-sheets">
+  <div class="modal">
+    <h3>Google Sheets sync</h3>
+    <ol>
+      <li>Mở <a href="https://sheets.google.com" target="_blank">sheets.google.com</a> → tạo sheet mới</li>
+      <li>Extensions → Apps Script → dán Code.gs → Save</li>
+      <li>Deploy → New deployment → Web app<br>Execute as: Me · Who has access: Anyone</li>
+      <li>Copy URL /exec dán vào đây</li>
+    </ol>
+    <input type="text" id="sheets-input" placeholder="https://script.google.com/macros/s/..."/>
+    <div class="modal-btns"><button class="mbtn-cancel" onclick="closeModal('sheets')">Cancel</button><button class="mbtn-save" onclick="saveSheets()">Save & sync</button></div>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+// Each scenario has 3 vi items → spawns 3 cards in box2+
+const SCENARIOS = [
+  { id:"s1", cat:"Schedule",
+    en:"Hi, are you free for a call next Wednesday at 2pm?",
+    vi:["Được, mình có thể call vào thứ 4 tuần sau lúc 2pm.",
+        "Mình bận lúc đó, bạn có rảnh thứ 5 lúc 3pm không?",
+        "Thứ 4 lúc 2pm mình ổn, mình sẽ gửi invite nhé."] },
+  { id:"s2", cat:"Clarify",
+    en:"Hey, I've just shared the new feature request. Let me know if you have questions.",
+    vi:["Cảm ơn bạn. Mình muốn hỏi rõ hơn về scope — tính năng này áp dụng cho user nào?",
+        "Mình đã đọc qua. Bạn có thể clarify deadline cho cái này không?",
+        "Cảm ơn! Một câu hỏi: tính năng này có áp dụng cho mobile không hay chỉ web?"] },
+  { id:"s3", cat:"Update",
+    en:"Quick check — is ticket #234 done yet?",
+    vi:["Mình đang xử lý, dự kiến xong trước 5pm hôm nay.",
+        "Chưa xong. Mình đang bị block bởi phía backend, sẽ update ngay khi có.",
+        "Xong rồi, mình vừa move sang Done. Bạn có thể review không?"] },
+  { id:"s4", cat:"Bug report",
+    en:"Can you take a look when you get a chance? Something seems off on staging.",
+    vi:["Mình tìm thấy bug: nút Submit bị disabled sau khi upload file trên staging.",
+        "Lỗi cụ thể: Submit button disabled sau khi upload. Xảy ra trên Chrome và Firefox.",
+        "Bạn có thể check lỗi này không: Submit button disabled sau khi upload. Chỉ xảy ra trên staging."] },
+  { id:"s5", cat:"Follow-up",
+    en:"Just wanted to follow up on the API docs I sent over — any update?",
+    vi:["Mình chỉ muốn follow up về API docs mình gửi hôm thứ 2. Bạn cần thêm thông tin gì không?",
+        "Mình cần cái này để unblock team. Bạn có thể update cho mình trước EOD không?",
+        "Không biết email của mình có vào spam không — mình gửi lại nhé."] },
+  { id:"s6", cat:"Clarify",
+    en:"We'd like to update the UI on the dashboard page. Can you help scope this out?",
+    vi:["Được, mình có thể help. Bạn muốn thay đổi layout hay chỉ update màu sắc và font?",
+        "Để mình hiểu đúng scope: thay đổi này apply cho tất cả user hay chỉ một số role?",
+        "Mình cần thêm context. Có design file hoặc mockup nào mình có thể reference không?"] },
+  { id:"s7", cat:"Update",
+    en:"Sprint review is tomorrow morning — what's the status on features A and B?",
+    vi:["Feature A: done, đã deploy lên staging. Feature B: đang test, dự kiến xong trước 9am mai.",
+        "A xong rồi. B còn một bug nhỏ, mình đang fix, sẽ xong trước sprint review.",
+        "Cả hai đều on track. A đã xong, B đang ở bước QA, không có blocker."] },
+  { id:"s8", cat:"Schedule",
+    en:"We need to sync on the requirements. Are you and the team available for 30 mins this week?",
+    vi:["Mình available thứ 3 hoặc thứ 4, từ 2–4pm. Bạn chọn slot nào phù hợp?",
+        "Team mình rảnh thứ 5 lúc 10am hoặc thứ 6 lúc 2pm. Slot nào tiện cho bạn?",
+        "Mình sẽ gửi calendar invite với vài options, bạn pick slot nào rảnh nhé."] },
+  { id:"s9", cat:"Clarify",
+    en:"The client wants this delivered by end of month. Can we make it work?",
+    vi:["Mình cần check với team trước. Hiện tại có bao nhiêu items trong scope?",
+        "Được nếu scope giữ nguyên. Nếu có thay đổi thêm thì mình cần điều chỉnh timeline.",
+        "Để mình estimate lại. Bạn có thể share danh sách requirements cụ thể không?"] },
+  { id:"s10", cat:"Follow-up",
+    en:"Did you get a chance to review the proposal I sent last week?",
+    vi:["Mình chưa nhận được feedback. Bạn có thể review và cho mình biết ý kiến trước thứ 4 không?",
+        "Mình cần cái này để move forward. Bạn có cần thêm thông tin gì không?",
+        "Chưa thấy reply từ bạn. Mình đặt deadline thứ 4 để có thể kick off — bạn okay không?"] }
+];
+
+// ── CARD SYSTEM ───────────────────────────────────────────────────────────
+// Two types of cards:
+// 1. "scenario" card (box1): id=s1, covers all 3 vi items together
+// 2. "pair" card (box2+): id=s1_0, s1_1, s1_2 — one vi item each
+//
+// cards store: { type, scenarioId, viIdx(pair only), box, nextReview,
+//               failCount, lastScore, lastPattern, mastered, acceptedAnswer }
+
+const PASS_SCORE  = 9;
+const MAX_TRIES   = 999;
+const DAILY_QUOTA = 5;
+const MAX_BACKLOG = 15;
+const BOX_INT     = [0,1,2,4,7,14];
+
+let cards  = {};
+let streak = {lastActiveDate:"",streakDays:0,totalDone:0,backlog:0};
+let session= {queue:[],cur:0,viStep:0,viResults:[],viAttempts:0,totalScore:0,maxScore:0,doneToday:0};
+let busy   = false;
+let geminiKey = localStorage.getItem("ba_gemini_key")||"";
+let sheetsUrl = localStorage.getItem("ba_sheets_url")||"";
+
+// ── DATE UTILS ────────────────────────────────────────────────────────────
+const todayStr=()=>new Date().toISOString().slice(0,10);
+const addDays=(d,n)=>{const dt=new Date(d);dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);};
+const daysDiff=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
+const isDue=c=>!c.mastered&&c.nextReview<=todayStr();
+const nextLabel=d=>{const diff=daysDiff(todayStr(),d);if(diff<=0)return"due now";if(diff===1)return"tomorrow";return"in "+diff+" days";};
+
+// ── CARD INIT ─────────────────────────────────────────────────────────────
+function ensureScenarioCard(s){
+  if(!cards[s.id]) cards[s.id]={type:"scenario",scenarioId:s.id,box:1,nextReview:todayStr(),failCount:0,lastScore:0,lastPattern:"",mastered:false};
+}
+function ensurePairCard(sid,viIdx){
+  const pid=sid+"_"+viIdx;
+  if(!cards[pid]) cards[pid]={type:"pair",scenarioId:sid,viIdx,box:2,nextReview:todayStr(),failCount:0,lastScore:0,lastPattern:"",mastered:false,acceptedAnswer:""};
+  return pid;
+}
+function initAllCards(){SCENARIOS.forEach(s=>ensureScenarioCard(s));}
+
+// ── SYNC ──────────────────────────────────────────────────────────────────
+function setSS(m,c){const el=document.getElementById("sync-st");el.textContent=m;el.className="sync-st"+(c?" "+c:"");}
+
+async function syncLoad(){
+  if(!sheetsUrl)return;
+  setSS("syncing…");
+  try{
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),8000);
+    const res=await fetch(sheetsUrl+"?action=load",{signal:ctrl.signal});
+    clearTimeout(tid);
+    const data=await res.json();
+    if(data.ok&&data.data){
+      (data.data.cards||[]).forEach(r=>{
+        cards[r.id]={
+          type:r.type||"scenario", scenarioId:r.scenarioId||r.id,
+          viIdx:r.viIdx!==""&&r.viIdx!==undefined?parseInt(r.viIdx):-1,
+          box:parseInt(r.box)||1, nextReview:r.nextReview||todayStr(),
+          failCount:parseInt(r.failCount)||0, lastScore:parseInt(r.lastScore)||0,
+          lastPattern:r.lastPattern||"", mastered:r.mastered==="true"||r.mastered===true,
+          acceptedAnswer:r.acceptedAnswer||""
+        };
+      });
+      const s=data.data.streak||{};
+      if(s.lastActiveDate)streak.lastActiveDate=s.lastActiveDate.slice(0,10);
+      if(s.streakDays)streak.streakDays=parseInt(s.streakDays)||0;
+      if(s.totalDone)streak.totalDone=parseInt(s.totalDone)||0;
+      if(s.backlog!==undefined)streak.backlog=parseInt(s.backlog)||0;
+      setSS("synced","ok"); renderReviewBadge();
+    }
+  }catch(e){setSS("sync failed","err");}
+}
+
+async function syncSaveCard(id){
+  if(!sheetsUrl)return;
+  const c=cards[id];if(!c)return;
+  try{await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
+    body:JSON.stringify({action:"saveCard",entry:(()=>{
+      const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+      return {id,...c,
+        en:s?s.en:"",
+        vi:(c.type==="pair"&&s)?s.vi[c.viIdx]:"",
+        acceptedAnswer:c.acceptedAnswer||""};
+    })()})});}catch(e){}
+}
+async function syncSaveStreak(){
+  if(!sheetsUrl)return;
+  try{await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
+    body:JSON.stringify({action:"saveStreak",streak})});}catch(e){}
+}
+async function syncClearAll(){
+  if(!sheetsUrl)return;
+  try{await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
+    body:JSON.stringify({action:"clear"})});}catch(e){}
+}
+
+// ── STREAK / QUOTA ────────────────────────────────────────────────────────
+function computeQuota(){
+  const today=todayStr(),last=streak.lastActiveDate;
+  if(last&&last!==today){
+    const missed=daysDiff(last,today)-1;
+    if(missed>0)streak.backlog=Math.min(streak.backlog+missed*DAILY_QUOTA,MAX_BACKLOG);
+    // Don't set lastActiveDate=today here - only set it when work is actually done
+    session.doneToday=0;
+  }
+  return DAILY_QUOTA+Math.min(streak.backlog,MAX_BACKLOG);
+}
+function recordDone(){
+  streak.totalDone++;
+  const quota=computeQuota();
+  const today=todayStr(),last=streak.lastActiveDate;
+  // Chỉ tính vào quota nếu chưa đủ — câu tự chọn thêm không reset streak
+  if(session.doneToday<quota){
+    session.doneToday++;
+    localStorage.setItem("ba_done_"+today, session.doneToday);
+    if(session.doneToday>=quota){
+      // Vừa hoàn thành quota!
+      if(!last||daysDiff(last,today)>1)streak.streakDays=1;
+      else if(last===today){}  // same day, streak already counted
+      else if(daysDiff(last,today)===1)streak.streakDays++;
+      streak.lastActiveDate=today;
+      streak.backlog=Math.max(0,streak.backlog-DAILY_QUOTA);
+    }
+  }
+  // Câu tự chọn thêm (doneToday >= quota): không thay đổi gì, chỉ tính điểm
+  renderStreakPill();syncSaveStreak();
+}
+function renderStreakPill(){document.getElementById("streak-pill").textContent="🔥 "+streak.streakDays+" ngày";}
+
+// ── TABS ──────────────────────────────────────────────────────────────────
+function goTab(name,btn){
+  document.querySelectorAll(".tbtab").forEach(t=>t.classList.remove("on"));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.remove("on"));
+  btn.classList.add("on");document.getElementById("pane-"+name).classList.add("on");
+  if(name==="review")renderReview();
+  if(name==="log")renderLog();
+}
+function renderReviewBadge(){
+  initAllCards();
+  const allCards=Object.values(cards);
+  const n=allCards.filter(c=>isDue(c)).length;
+  document.getElementById("review-badge").textContent=n>0?"("+n+")":"";
+}
+
+// ── MODALS ────────────────────────────────────────────────────────────────
+function openModal(t){document.getElementById("modal-"+t).classList.add("open");if(t==="gemini")document.getElementById("gemini-input").value=geminiKey;if(t==="sheets")document.getElementById("sheets-input").value=sheetsUrl;}
+function closeModal(t){document.getElementById("modal-"+t).classList.remove("open");}
+function saveGemini(){geminiKey=document.getElementById("gemini-input").value.trim();localStorage.setItem("ba_gemini_key",geminiKey);closeModal("gemini");renderTrain();}
+async function saveSheets(){sheetsUrl=document.getElementById("sheets-input").value.trim();localStorage.setItem("ba_sheets_url",sheetsUrl);closeModal("sheets");await syncLoad();init();}
+
+// ── DAILY BANNER ──────────────────────────────────────────────────────────
+function dailyBanner(){
+  const quota=computeQuota(),done=session.doneToday,rem=Math.max(0,quota-done);
+  const pct=Math.min(100,Math.round(done/quota*100));
+  const finished=done>=quota;
+  const cls=finished?"db-ok":streak.backlog>0?"db-warn":"db-ok";
+  const titleCls=finished||streak.backlog===0?"db-title-ok":"db-title-warn";
+  const title=finished?"Daily quota done ✓":streak.backlog>0?"Backlog: "+rem+" scenarios left":rem+" scenarios left today";
+  const sub=finished?"Come back tomorrow!":"Quota: "+DAILY_QUOTA+(streak.backlog>0?" + "+Math.min(streak.backlog,MAX_BACKLOG)+" backlog":"")+" · done today: "+done;
+  return`<div class="daily-banner ${cls}"><div class="db-top"><span class="${titleCls}">${title}</span><span style="font-size:12px;color:#aaa">${pct}%</span></div><div class="db-sub">${sub}</div><div class="quota-bar"><div class="quota-fill" style="width:${pct}%"></div></div></div>`;
+}
+
+// ── BUILD SESSION QUEUE ───────────────────────────────────────────────────
+function buildQueue(){
+  initAllCards();
+  const quota=computeQuota(),rem=Math.max(0,quota-session.doneToday);
+  if(rem<=0)return[];
+  // scenario cards due (box1)
+  const scenarioDue=SCENARIOS.filter(s=>isDue(cards[s.id])).sort((a,b)=>cards[a.id].lastScore-cards[b.id].lastScore);
+  // pair cards due (box2+)
+  const pairDue=Object.values(cards).filter(c=>c.type==="pair"&&isDue(c))
+    .sort((a,b)=>a.box-b.box);
+  // new scenario cards not yet started
+  const fresh=SCENARIOS.filter(s=>!isDue(cards[s.id])&&!cards[s.id].mastered&&cards[s.id].lastScore===0);
+  const combined=[];
+  const seen=new Set();
+  [...scenarioDue,...fresh].forEach(s=>{if(!seen.has(s.id)){seen.add(s.id);combined.push({mode:"scenario",s});}});
+  pairDue.forEach(c=>{const key=c.scenarioId+"_"+c.viIdx;if(!seen.has(key)){seen.add(key);combined.push({mode:"pair",c});}});
+  return combined.slice(0,rem);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+function init(){
+  initAllCards();computeQuota();
+  session.queue=buildQueue();
+  session.cur=0;session.viStep=0;session.viResults=[];session.viAttempts=0;
+  session.totalScore=0;session.maxScore=0;
+  renderStreakPill();renderTrain();
+}
+
+// ── TRAIN RENDER ──────────────────────────────────────────────────────────
+function renderTrain(){
+  const area=document.getElementById("pane-train");
+  if(!geminiKey){area.innerHTML=`<div class="banner warn">No Gemini key — click <strong>Gemini key</strong>. Free at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>.</div>`;return;}
+  const quota=computeQuota();
+  const banner=dailyBanner();
+  if(session.doneToday>=quota){area.innerHTML=banner+`<div class="empty-session"><p>Daily quota done! Come back tomorrow.</p></div>`;return;}
+  if(session.cur>=session.queue.length){
+    session.queue=buildQueue();session.cur=0;
+    if(session.queue.length===0){area.innerHTML=banner+`<div class="empty-session"><p>All done for today! Come back tomorrow.</p></div>`;return;}
+  }
+  const item=session.queue[session.cur];
+  if(item.mode==="scenario") renderScenarioStep(area,banner,item.s);
+  else renderPairStep(area,banner,item.c);
+}
+
+// BOX-1: scenario with 3 vi items, step by step
+function renderScenarioStep(area,banner,s){
+  const card=cards[s.id];
+  const step=session.viStep; // 0,1,2
+  const results=session.viResults; // [{pass,score}]
+  // sub-progress dots
+  const subDots=s.vi.map((_,i)=>{
+    let cls="sub-dot";
+    if(i<results.length) cls+=" "+(results[i].pass?"pass":"fail");
+    else if(i===step) cls+=" cur";
+    return`<div class="${cls}"></div>`;
+  }).join("");
+  const viText=s.vi[step];
+  const prog=`<div class="prog-row">${session.queue.map((_,i)=>{let c="pdot";if(i<session.cur)c+=" done";else if(i===session.cur)c+=" cur";return`<div class="${c}"></div>`;}).join("")}</div>`;
+  area.innerHTML=banner+prog+`
+    <div class="scene-box">
+      <div class="scene-meta">
+        <span class="cat-chip">${s.cat}</span>
+        <span class="box-chip box-1">Box 1</span>
+        <span style="font-size:11px;color:#aaa">Reply ${step+1} of ${s.vi.length}</span>
+      </div>
+      <div class="sender-label">They wrote:</div>
+      <div class="scene-en">"${s.en}"</div>
+      <div class="sub-prog">${subDots}</div>
+      <div class="vi-sub-label">Translate this reply to English:</div>
+      <div class="vi-target"><span class="vi-num">${step+1}.</span>${viText}</div>
+    </div>
+    ${session.viAttempts>0?`<div class="attempt-note">Not passing — rewrite and try again.</div>`:""}
+    <div class="err-line" id="err"></div>
+    <textarea id="tinput" placeholder="Your English translation…"></textarea>
+    <div class="ifoot"><span class="hint-key">Ctrl+Enter to send</span><button class="send-btn" id="sbtn" onclick="submitScenario()">Check</button></div>
+    <div id="fbarea"></div>`;
+  const ta=document.getElementById("tinput");ta.focus();
+  ta.addEventListener("input",()=>{document.getElementById("err").textContent="";});
+  ta.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))submitScenario();});
+}
+
+// BOX-2+: single pair card
+function renderPairStep(area,banner,c){
+  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const viText=s.vi[c.viIdx];
+  const pid=c.scenarioId+"_"+c.viIdx;
+  const gtHtml=c.acceptedAnswer?`<div class="gt-box"><div class="gt-label">Previously accepted answer:</div><div class="gt-item">"${c.acceptedAnswer}"</div></div>`:"";
+  const prog=`<div class="prog-row">${session.queue.map((_,i)=>{let cl="pdot";if(i<session.cur)cl+=" done";else if(i===session.cur)cl+=" cur";return`<div class="${cl}"></div>`;}).join("")}</div>`;
+  area.innerHTML=banner+prog+`
+    <div class="scene-box">
+      <div class="scene-meta">
+        <span class="cat-chip">${s.cat}</span>
+        <span class="box-chip box-${c.box}">Box ${c.box}</span>
+        ${session.viAttempts>0?`<span class="retry-chip">Attempt ${session.viAttempts+1}/${MAX_TRIES}</span>`:""}
+      </div>
+      <div class="sender-label">They wrote:</div>
+      <div class="scene-en">"${s.en}"</div>
+      <div class="vi-sub-label">Translate this to English:</div>
+      <div class="vi-target">${viText}</div>
+    </div>
+    ${gtHtml}
+    ${session.viAttempts>0?`<div class="attempt-note">Not passing — rewrite and try again.</div>`:""}
+    <div class="err-line" id="err"></div>
+    <textarea id="tinput" placeholder="Your English translation…"></textarea>
+    <div class="ifoot"><span class="hint-key">Ctrl+Enter to send</span><button class="send-btn" id="sbtn" onclick="submitPair()">Check</button></div>
+    <div id="fbarea"></div>`;
+  const ta=document.getElementById("tinput");ta.focus();
+  ta.addEventListener("input",()=>{document.getElementById("err").textContent="";});
+  ta.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))submitPair();});
+}
+
+// ── AI CALL ───────────────────────────────────────────────────────────────
+async function callAI(en,cat,viText,val,groundTruth){
+  const gtCtx=groundTruth?`Previously accepted answer for reference: "${groundTruth}". `: "";
+  const prompt=`You are an English writing coach for a Vietnamese BA using Microsoft Teams.
+
+Colleague's message: "${en}"
+Category: ${cat}
+Vietnamese reply to translate: "${viText}"
+${gtCtx}User's English translation: "${val}"
+
+Evaluate as a Teams message. JSON only, no markdown:
+{"score":<1-10>,"strengths":"<one short Vietnamese sentence, or empty>","main_issue":"<one short Vietnamese sentence, empty if score>=${PASS_SCORE}>","error_pattern":"<short Vietnamese phrase like Thiếu ETA/Câu quá dài, empty if score>=${PASS_SCORE}>","suggestion":"<natural English Teams reply>"}`;
+  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiKey}`,
+    {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+  const data=await res.json();
+  if(data.error)throw new Error(data.error.message||"API error");
+  const raw=(data.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
+  return JSON.parse(raw);
+}
+
+function fbHtml(fb,score,moveHtml,actionHtml){
+  const passed=score>=PASS_SCORE;
+  const cls=passed?"pass":score>=5?"warn":"fail";
+  const verdict=passed?"Good to send":score>=5?"Needs improvement":"Needs significant work";
+  return`<div class="fb-box ${cls}">
+    <div class="fb-top"><span class="fb-score">${score}/10</span><span class="fb-verdict">${verdict}</span></div>
+    ${moveHtml}
+    ${fb.strengths?`<div class="fb-sec"><div class="fb-lbl">What worked</div><div class="fb-txt">${fb.strengths}</div></div>`:""}
+    ${fb.main_issue?`<div class="fb-sec"><div class="fb-lbl">Main issue</div><div class="fb-txt">${fb.main_issue}</div></div>`:""}
+    <div class="fb-sec"><div class="fb-lbl">Better version</div><div class="suggestion">${fb.suggestion}</div></div>
+  </div>${actionHtml}`;
+}
+
+// ── SUBMIT SCENARIO (BOX-1) ───────────────────────────────────────────────
+async function submitScenario(){
+  if(busy)return;
+  const val=(document.getElementById("tinput").value||"").trim();
+  if(!val){document.getElementById("err").textContent="Type something first.";return;}
+  if(val.length<4){document.getElementById("err").textContent="Too short.";return;}
+  busy=true;
+  document.getElementById("sbtn").disabled=true;
+  document.getElementById("tinput").disabled=true;
+  document.getElementById("fbarea").innerHTML=`<div class="loading-row"><div class="spin"></div><div class="spin-txt">Checking…</div></div>`;
+
+  const s=session.queue[session.cur].s;
+  const step=session.viStep;
+  session.viAttempts++;
+  try{
+    const fb=await callAI(s.en,s.cat,s.vi[step],val,"");
+    const score=Math.max(1,Math.min(10,parseInt(fb.score)||5));
+    const passed=score>=PASS_SCORE;
+    session.totalScore+=score;session.maxScore+=10;
+    document.getElementById("score-pill").textContent=session.totalScore+" pts";
+
+    let moveHtml="",actionHtml="";
+    if(passed){
+      // create/update pair card for box2
+      const pid=ensurePairCard(s.id,step);
+      cards[pid].acceptedAnswer=val;
+      cards[pid].box=2;
+      cards[pid].nextReview=addDays(todayStr(),BOX_INT[2]);
+      cards[pid].lastScore=score;
+      syncSaveCard(pid);
+      moveHtml=`<div class="fb-move up">✓ Saved as Box 2 card · next review ${nextLabel(cards[pid].nextReview)}</div>`;
+      session.viResults.push({pass:true,score});
+      session.viAttempts=0;
+      actionHtml=`<div class="act-row"><button class="btn-next" onclick="nextViStep()">Next reply →</button></div>`;
+    } else {
+      moveHtml=`<div class="fb-move down">Not passing — rewrite needed</div>`;
+      actionHtml=`<div class="retry-note">Need ${PASS_SCORE}+ to pass. Read suggestion and rewrite.</div><div class="act-row"><button class="btn-rewrite" onclick="retryScenario()">Rewrite</button></div>`;
+    }
+    document.getElementById("fbarea").innerHTML=fbHtml(fb,score,moveHtml,actionHtml);
+  }catch(e){
+    document.getElementById("fbarea").innerHTML=`<div style="font-size:13px;color:#c0392b;padding:.5rem 0">${e.message||"Error — check Gemini key."}</div>`;
+    document.getElementById("tinput").disabled=false;document.getElementById("sbtn").disabled=false;
+  }
+  busy=false;
+}
+
+function retryScenario(){busy=false;const s=session.queue[session.cur].s;renderScenarioStep(document.getElementById("pane-train"),dailyBanner(),s);}
+
+function nextViStep(){
+  const s=session.queue[session.cur].s;
+  session.viStep++;
+  session.viAttempts=0;
+  if(session.viStep>=s.vi.length){
+    // scenario done — update scenario card
+    const card=cards[s.id];
+    const allPass=session.viResults.every(r=>r.pass);
+    if(allPass){card.mastered=true;card.lastScore=PASS_SCORE;}
+    else{card.nextReview=addDays(todayStr(),BOX_INT[1]);card.failCount++;}
+    syncSaveCard(s.id);
+    recordDone();
+    renderReviewBadge();
+    // move to next scenario in queue
+    session.cur++;session.viStep=0;session.viResults=[];session.viAttempts=0;
+    renderTrain();
+  } else {
+    renderScenarioStep(document.getElementById("pane-train"),dailyBanner(),s);
+  }
+}
+
+// ── SUBMIT PAIR (BOX-2+) ──────────────────────────────────────────────────
+async function submitPair(){
+  if(busy)return;
+  const val=(document.getElementById("tinput").value||"").trim();
+  if(!val){document.getElementById("err").textContent="Type something first.";return;}
+  if(val.length<4){document.getElementById("err").textContent="Too short.";return;}
+  busy=true;
+  document.getElementById("sbtn").disabled=true;
+  document.getElementById("tinput").disabled=true;
+  document.getElementById("fbarea").innerHTML=`<div class="loading-row"><div class="spin"></div><div class="spin-txt">Checking…</div></div>`;
+
+  const c=session.queue[session.cur].c;
+  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const pid=c.scenarioId+"_"+c.viIdx;
+  session.viAttempts++;
+  try{
+    const fb=await callAI(s.en,s.cat,s.vi[c.viIdx],val,c.acceptedAnswer||"");
+    const score=Math.max(1,Math.min(10,parseInt(fb.score)||5));
+    const passed=score>=PASS_SCORE;
+    session.totalScore+=score;session.maxScore+=10;
+    document.getElementById("score-pill").textContent=session.totalScore+" pts";
+
+    const oldBox=c.box;
+    let moveHtml="",actionHtml="";
+    if(passed){
+      c.acceptedAnswer=val;
+      if(c.box>=5){c.mastered=true;}
+      else{c.box=Math.min(5,c.box+1);}
+      c.nextReview=addDays(todayStr(),BOX_INT[c.box]);
+      c.lastScore=score;
+      syncSaveCard(pid);
+      if(c.mastered) moveHtml=`<div class="fb-move mastered">Mastered!</div>`;
+      else moveHtml=`<div class="fb-move up">Box ${oldBox} → Box ${c.box} · next review ${nextLabel(c.nextReview)}</div>`;
+      recordDone();renderReviewBadge();
+      actionHtml=`<div class="act-row"><button class="btn-next" onclick="nextPair()">Next →</button></div>`;
+    } else {
+      moveHtml=`<div class="fb-move down">Not passing yet</div>`;
+      actionHtml=`<div class="retry-note">Need ${PASS_SCORE}+ to pass. Rewrite using the suggestion.</div><div class="act-row"><button class="btn-rewrite" onclick="retryPair()">Rewrite</button></div>`;
+    }
+    document.getElementById("fbarea").innerHTML=fbHtml(fb,score,moveHtml,actionHtml);
+  }catch(e){
+    document.getElementById("fbarea").innerHTML=`<div style="font-size:13px;color:#c0392b;padding:.5rem 0">${e.message||"Error — check Gemini key."}</div>`;
+    document.getElementById("tinput").disabled=false;document.getElementById("sbtn").disabled=false;
+  }
+  busy=false;
+}
+
+function retryPair(){busy=false;session.viAttempts;const item=session.queue[session.cur];renderPairStep(document.getElementById("pane-train"),dailyBanner(),item.c);}
+function nextPair(){busy=false;session.viAttempts=0;session.cur++;renderTrain();}
+
+// ── REVIEW TAB ────────────────────────────────────────────────────────────
+let revQueue=[],revCur=0,revAttempts=0;
+
+function renderReview(){
+  initAllCards();
+  const area=document.getElementById("pane-review");
+  const bc=[0,0,0,0,0,0],mc=Object.values(cards).filter(c=>c.mastered).length;
+  Object.values(cards).forEach(c=>{if(!c.mastered&&c.box>=1&&c.box<=5)bc[c.box]++;});
+  const freqs=["","Daily","Every 2d","Every 4d","Weekly","2 weeks"];
+  const boxHtml=`<div class="boxes-grid">${[1,2,3,4,5].map(b=>`<div class="box-card b${b}c"><div class="box-card-num">Box ${b}</div><div class="box-card-count">${bc[b]||0}</div><div class="box-card-freq">${freqs[b]}</div></div>`).join("")}</div><div class="mastered-row">Mastered: ${mc} / ${Object.keys(cards).length}</div>`;
+  const due=Object.entries(cards).filter(([,c])=>isDue(c));
+  if(due.length===0){area.innerHTML=boxHtml+`<div class="log-empty">No cards due — all caught up!</div>`;return;}
+  revQueue=due.map(([id,c])=>({id,c})).sort((a,b)=>a.c.box-b.c.box);
+  revCur=0;revAttempts=0;
+  area.innerHTML=boxHtml+`<div id="rev-session"></div>`;
+  renderRevCard();
+}
+
+function renderRevCard(){
+  const area=document.getElementById("rev-session");if(!area)return;
+  if(revCur>=revQueue.length){area.innerHTML=`<div class="empty-session"><p>Review done!</p><button class="restart-btn" onclick="renderReview()">Refresh</button></div>`;return;}
+  const {id,c}=revQueue[revCur];
+  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const viText=c.type==="pair"?s.vi[c.viIdx]:null;
+  const gtHtml=c.acceptedAnswer?`<div class="gt-box"><div class="gt-label">Previously accepted:</div><div class="gt-item">"${c.acceptedAnswer}"</div></div>`:"";
+  area.innerHTML=`
+    <div class="scene-box">
+      <div class="scene-meta"><span class="cat-chip">${s.cat}</span><span class="box-chip box-${c.box}">Box ${c.box}</span>${revAttempts>0?`<span class="retry-chip">Attempt ${revAttempts+1}/${MAX_TRIES}</span>`:""}</div>
+      <div class="sender-label">They wrote:</div>
+      <div class="scene-en">"${s.en}"</div>
+      ${viText?`<div class="vi-sub-label">Translate to English:</div><div class="vi-target">${viText}</div>`:""}
+    </div>
+    ${gtHtml}
+    ${revAttempts>0?`<div class="attempt-note">Not passing — rewrite. Keep trying.</div>`:""}
+    <div class="err-line" id="rev-err"></div>
+    <textarea id="rev-input" placeholder="Your English reply…"></textarea>
+    <div class="ifoot"><span class="hint-key">Ctrl+Enter to send</span><button class="send-btn" id="rev-btn" onclick="submitRev()">Check</button></div>
+    <div id="rev-fb"></div>`;
+  const ta=document.getElementById("rev-input");ta.focus();
+  ta.addEventListener("input",()=>{document.getElementById("rev-err").textContent="";});
+  ta.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))submitRev();});
+}
+
+async function submitRev(){
+  if(busy)return;
+  const val=(document.getElementById("rev-input").value||"").trim();
+  if(!val){document.getElementById("rev-err").textContent="Type something first.";return;}
+  busy=true;
+  document.getElementById("rev-btn").disabled=true;
+  document.getElementById("rev-input").disabled=true;
+  document.getElementById("rev-fb").innerHTML=`<div class="loading-row"><div class="spin"></div><div class="spin-txt">Checking…</div></div>`;
+  const {id,c}=revQueue[revCur];
+  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const viText=c.type==="pair"?s.vi[c.viIdx]:"";
+  revAttempts++;
+  try{
+    const fb=await callAI(s.en,s.cat,viText,val,c.acceptedAnswer||"");
+    const score=Math.max(1,Math.min(10,parseInt(fb.score)||5));
+    const passed=score>=PASS_SCORE;
+    const oldBox=c.box;
+    let moveHtml="",actionHtml="";
+    if(passed){
+      if(c.acceptedAnswer!==undefined)c.acceptedAnswer=val;
+      if(c.box>=5)c.mastered=true;else c.box=Math.min(5,c.box+1);
+      c.nextReview=addDays(todayStr(),BOX_INT[c.box]);c.lastScore=score;
+      syncSaveCard(id);renderReviewBadge();
+      if(c.mastered)moveHtml=`<div class="fb-move mastered">Mastered!</div>`;
+      else moveHtml=`<div class="fb-move up">Box ${oldBox} → Box ${c.box} · next ${nextLabel(c.nextReview)}</div>`;
+      actionHtml=`<div class="act-row"><button class="btn-next" onclick="nextRev()">Next →</button></div>`;
+    } else {
+      moveHtml=`<div class="fb-move down">Not passing yet</div>`;
+      actionHtml=`<div class="retry-note">Need ${PASS_SCORE}+ — rewrite.</div><div class="act-row"><button class="btn-rewrite" onclick="retryRev()">Rewrite</button></div>`;
+    }
+    document.getElementById("rev-fb").innerHTML=fbHtml(fb,score,moveHtml,actionHtml);
+  }catch(e){
+    document.getElementById("rev-fb").innerHTML=`<div style="font-size:13px;color:#c0392b;padding:.5rem 0">${e.message||"Error."}</div>`;
+    document.getElementById("rev-input").disabled=false;document.getElementById("rev-btn").disabled=false;
+  }
+  busy=false;
+}
+function retryRev(){busy=false;renderRevCard();}
+function nextRev(){busy=false;revAttempts=0;revCur++;renderRevCard();}
+
+// ── LOG TAB ───────────────────────────────────────────────────────────────
+function renderLog(){
+  initAllCards();
+  const area=document.getElementById("pane-log");
+  const allCards=Object.entries(cards);
+  const active=allCards.filter(([,c])=>!c.mastered).sort((a,b)=>(b[1].failCount||0)-(a[1].failCount||0));
+  const mastered=allCards.filter(([,c])=>c.mastered);
+  let html=`<div class="log-hdr"><span class="log-title">Progress · ${streak.totalDone} completed</span><button class="clr-btn" onclick="clearAll()">Reset all</button></div>`;
+  if(active.length>0){
+    html+=`<div class="log-sec-title">In progress (${active.length})</div>`;
+    html+=active.map(([id,c])=>{
+      const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+      const viText=c.type==="pair"?`<div class="log-vi">→ "${s.vi[c.viIdx]}"</div>`:"";
+      return`<div class="log-item">
+        <div class="log-item-top"><span class="cat-chip">${s.cat}</span><span class="box-chip box-${c.box}">Box ${c.box}</span><span class="log-date">next: ${nextLabel(c.nextReview)}</span></div>
+        <div class="log-en">"${s.en}"</div>${viText}
+        <div class="log-meta">Fails: <b>${c.failCount}</b> · Last: <b>${c.lastScore}/10</b>${c.lastPattern?` · <b>${c.lastPattern}</b>`:""}</div>
+        ${c.acceptedAnswer?`<div class="gt-box" style="margin-top:6px"><div class="gt-label">Accepted:</div><div class="gt-item">"${c.acceptedAnswer}"</div></div>`:""}
+      </div>`;}).join("");
+  }
+  if(mastered.length>0){
+    html+=`<div class="log-sec-title">Mastered (${mastered.length})</div>`;
+    html+=mastered.map(([id,c])=>{const s=SCENARIOS.find(x=>x.id===c.scenarioId);return`<div class="log-item mastered-item"><div class="log-item-top"><span class="cat-chip">${s.cat}</span><span style="font-size:11px;padding:2px 7px;border-radius:20px;background:#f5f0ff;color:#6633cc;border:1px solid #c8b0f0;">Mastered ✓</span></div><div class="log-en">"${s.en}"</div>${c.type==="pair"?`<div class="log-vi">→ "${s.vi[c.viIdx]}"</div>`:""}</div>`;}).join("");
+  }
+  if(active.length===0&&mastered.length===0)html+=`<div class="log-empty">No data yet — start practicing!</div>`;
+  area.innerHTML=html;
+}
+
+async function clearAll(){
+  if(!confirm("Reset all progress?"))return;
+  cards={};streak={lastActiveDate:"",streakDays:0,totalDone:0,backlog:0};
+  session.doneToday=0;initAllCards();
+  renderStreakPill();renderReviewBadge();renderLog();
+  await syncClearAll();
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────
+syncLoad().then(()=>{
+  // Restore doneToday from localStorage
+  const savedDone=parseInt(localStorage.getItem("ba_done_"+todayStr()))||0;
+  session.doneToday=savedDone;
+  renderStreakPill();init();
+});
+</script>
+</body>
+</html>
