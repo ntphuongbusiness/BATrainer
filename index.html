@@ -271,6 +271,90 @@ const SCENARIOS = [
         "Chưa thấy reply từ bạn. Mình đặt deadline thứ 4 để có thể kick off — bạn okay không?"] }
 ];
 
+// ── AI SCENARIO GENERATION ────────────────────────────────────────────────
+// AI-generated scenarios are stored separately, added dynamically each day
+let aiScenarios = []; // loaded from localStorage + Sheets
+const AI_DAILY = 5;   // new AI scenarios per day
+const CATS = ["Schedule","Clarify","Update","Bug report","Follow-up","Escalate","Handover"];
+
+function getAllScenarios(){
+  return SCENARIOS.concat(aiScenarios);
+}
+
+function todayGenKey(){return "ba_gen_"+todayStr();}
+
+async function generateDailyScenarios(){
+  // Check if already generated today
+  const genKey=todayGenKey();
+  if(localStorage.getItem(genKey)==="done") return;
+  if(!geminiKey) return;
+
+  // Get topics already used to avoid repetition
+  const usedTopics=getAllScenarios().map(s=>s.en.slice(0,40)).join("; ");
+
+  const prompt=`You are generating English workplace chat scenarios for a Vietnamese BA to practice translating.
+
+Already used topics (avoid these): ${usedTopics}
+
+Generate exactly ${AI_DAILY} NEW realistic Microsoft Teams messages from a colleague to a BA.
+Each must be different category. Use these categories: ${CATS.join(", ")}.
+
+For each scenario, provide 3 Vietnamese reply options the BA could say (varying in approach).
+
+Return JSON only, no markdown:
+[
+  {
+    "id": "ai_${todayStr()}_1",
+    "cat": "Schedule",
+    "en": "the colleague's English message",
+    "vi": ["Vietnamese reply option 1", "Vietnamese reply option 2", "Vietnamese reply option 3"]
+  }
+]
+
+Rules:
+- Messages must be realistic Teams chat (short, professional, informal)
+- Vietnamese replies must be natural Vietnamese (not translated English)
+- Each scenario must use a DIFFERENT category
+- No overlap with already used topics`;
+
+  try{
+    const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key="+geminiKey,
+      {method:"POST",headers:{"Content-Type":"application/json"},
+       body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+    const data=await res.json();
+    if(data.error) return;
+    const raw=(data.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
+    const newScenarios=JSON.parse(raw);
+    if(!Array.isArray(newScenarios)||newScenarios.length===0) return;
+
+    // Add to aiScenarios
+    newScenarios.forEach(s=>{
+      if(!aiScenarios.find(x=>x.id===s.id)){
+        aiScenarios.push(s);
+      }
+    });
+
+    // Save to localStorage
+    localStorage.setItem("ba_ai_scenarios", JSON.stringify(aiScenarios));
+    localStorage.setItem(genKey, "done");
+
+    // Init cards for new scenarios
+    newScenarios.forEach(s=>ensureScenarioCard(s));
+
+    console.log("Generated "+newScenarios.length+" new scenarios for today");
+    await syncSaveAIScenarios();
+  }catch(e){
+    console.log("Failed to generate scenarios:", e.message);
+  }
+}
+
+function loadAIScenarios(){
+  try{
+    const saved=localStorage.getItem("ba_ai_scenarios");
+    if(saved) aiScenarios=JSON.parse(saved);
+  }catch(e){ aiScenarios=[]; }
+}
+
 // ── CARD SYSTEM ───────────────────────────────────────────────────────────
 // Two types of cards:
 // 1. "scenario" card (box1): id=s1, covers all 3 vi items together
@@ -302,14 +386,14 @@ const nextLabel=d=>{const diff=daysDiff(todayStr(),d);if(diff<=0)return"due now"
 
 // ── CARD INIT ─────────────────────────────────────────────────────────────
 function ensureScenarioCard(s){
-  if(!cards[s.id]) cards[s.id]={type:"scenario",scenarioId:s.id,box:1,nextReview:todayStr(),failCount:0,lastScore:0,lastPattern:"",mastered:false};
+  if(!cards[s.id]) cards[s.id]={type:"scenario",scenarioId:s.id,box:1,nextReview:todayStr(),failCount:0,lastScore:0,lastPattern:"",mastered:false,acceptedAnswer:""};
 }
 function ensurePairCard(sid,viIdx){
   const pid=sid+"_"+viIdx;
   if(!cards[pid]) cards[pid]={type:"pair",scenarioId:sid,viIdx,box:2,nextReview:todayStr(),failCount:0,lastScore:0,lastPattern:"",mastered:false,acceptedAnswer:""};
   return pid;
 }
-function initAllCards(){SCENARIOS.forEach(s=>ensureScenarioCard(s));}
+function initAllCards(){getAllScenarios().forEach(s=>ensureScenarioCard(s));}
 
 // ── SYNC ──────────────────────────────────────────────────────────────────
 function setSS(m,c){const el=document.getElementById("sync-st");el.textContent=m;el.className="sync-st"+(c?" "+c:"");}
@@ -339,6 +423,13 @@ async function syncLoad(){
       if(s.streakDays)streak.streakDays=parseInt(s.streakDays)||0;
       if(s.totalDone)streak.totalDone=parseInt(s.totalDone)||0;
       if(s.backlog!==undefined)streak.backlog=parseInt(s.backlog)||0;
+      // Load AI scenarios from Sheets if available
+      if(data.data.aiScenarios&&Array.isArray(data.data.aiScenarios)){
+        data.data.aiScenarios.forEach(s=>{
+          if(!aiScenarios.find(x=>x.id===s.id)) aiScenarios.push(s);
+        });
+        localStorage.setItem("ba_ai_scenarios",JSON.stringify(aiScenarios));
+      }
       setSS("synced","ok"); renderReviewBadge();
     }
   }catch(e){setSS("sync failed","err");}
@@ -349,7 +440,7 @@ async function syncSaveCard(id){
   const c=cards[id];if(!c)return;
   try{await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
     body:JSON.stringify({action:"saveCard",entry:(()=>{
-      const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+      const s=getAllScenarios().find(x=>x.id===c.scenarioId);
       return {id,...c,
         nextReview:(c.nextReview||todayStr()).slice(0,10),
         en:s?s.en:"",
@@ -362,6 +453,14 @@ async function syncSaveStreak(){
   try{await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
     body:JSON.stringify({action:"saveStreak",streak})});}catch(e){}
 }
+async function syncSaveAIScenarios(){
+  if(!sheetsUrl) return;
+  try{
+    await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({action:"saveAIScenarios",scenarios:aiScenarios})});
+  }catch(e){}
+}
+
 async function syncClearAll(){
   if(!sheetsUrl)return;
   try{await fetch(sheetsUrl,{method:"POST",headers:{"Content-Type":"text/plain"},
@@ -440,12 +539,12 @@ function buildQueue(){
   const quota=computeQuota(),rem=Math.max(0,quota-session.doneToday);
   if(rem<=0)return[];
   // scenario cards due (box1)
-  const scenarioDue=SCENARIOS.filter(s=>isDue(cards[s.id])).sort((a,b)=>cards[a.id].lastScore-cards[b.id].lastScore);
+  const scenarioDue=getAllScenarios().filter(s=>isDue(cards[s.id])).sort((a,b)=>cards[a.id].lastScore-cards[b.id].lastScore);
   // pair cards due (box2+)
   const pairDue=Object.values(cards).filter(c=>c.type==="pair"&&isDue(c))
     .sort((a,b)=>a.box-b.box);
   // new scenario cards not yet started
-  const fresh=SCENARIOS.filter(s=>!isDue(cards[s.id])&&!cards[s.id].mastered&&cards[s.id].lastScore===0);
+  const fresh=getAllScenarios().filter(s=>!isDue(cards[s.id])&&!cards[s.id].mastered&&cards[s.id].lastScore===0);
   const combined=[];
   const seen=new Set();
   [...scenarioDue,...fresh].forEach(s=>{if(!seen.has(s.id)){seen.add(s.id);combined.push({mode:"scenario",s});}});
@@ -517,7 +616,7 @@ function renderScenarioStep(area,banner,s){
 
 // BOX-2+: single pair card
 function renderPairStep(area,banner,c){
-  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const s=getAllScenarios().find(x=>x.id===c.scenarioId);
   const viText=s.vi[c.viIdx];
   const pid=c.scenarioId+"_"+c.viIdx;
   const gtHtml=""; // Hidden before submit — shown in feedback after checking
@@ -689,7 +788,7 @@ async function submitPair(){
   document.getElementById("fbarea").innerHTML=`<div class="loading-row"><div class="spin"></div><div class="spin-txt">Checking…</div></div>`;
 
   const c=session.queue[session.cur].c;
-  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const s=getAllScenarios().find(x=>x.id===c.scenarioId);
   const pid=c.scenarioId+"_"+c.viIdx;
   session.viAttempts++;
   try{
@@ -749,7 +848,7 @@ function renderRevCard(){
   const area=document.getElementById("rev-session");if(!area)return;
   if(revCur>=revQueue.length){area.innerHTML=`<div class="empty-session"><p>Review done!</p><button class="restart-btn" onclick="renderReview()">Refresh</button></div>`;return;}
   const {id,c}=revQueue[revCur];
-  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const s=getAllScenarios().find(x=>x.id===c.scenarioId);
   const viText=c.type==="pair"?s.vi[c.viIdx]:null;
   const gtHtml=""; // Hidden before submit — shown in feedback after checking
   area.innerHTML=`
@@ -779,7 +878,7 @@ async function submitRev(){
   document.getElementById("rev-input").disabled=true;
   document.getElementById("rev-fb").innerHTML='<div class="loading-row"><div class="spin"></div><div class="spin-txt">Đang chấm điểm…</div></div>';
   const {id,c}=revQueue[revCur];
-  const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+  const s=getAllScenarios().find(x=>x.id===c.scenarioId);
   const viText=c.type==="pair"?s.vi[c.viIdx]:"";
   revAttempts++;
   try{
@@ -847,7 +946,7 @@ function renderLog(){
   if(active.length>0){
     html+=`<div class="log-sec-title">In progress (${active.length})</div>`;
     html+=active.map(([id,c])=>{
-      const s=SCENARIOS.find(x=>x.id===c.scenarioId);
+      const s=getAllScenarios().find(x=>x.id===c.scenarioId);
       const viText=c.type==="pair"?`<div class="log-vi">→ "${s.vi[c.viIdx]}"</div>`:"";
       return`<div class="log-item">
         <div class="log-item-top"><span class="cat-chip">${s.cat}</span><span class="box-chip box-${c.box}">Box ${c.box}</span><span class="log-date">next: ${nextLabel(c.nextReview)}</span></div>
@@ -858,7 +957,7 @@ function renderLog(){
   }
   if(mastered.length>0){
     html+=`<div class="log-sec-title">Mastered (${mastered.length})</div>`;
-    html+=mastered.map(([id,c])=>{const s=SCENARIOS.find(x=>x.id===c.scenarioId);return`<div class="log-item mastered-item"><div class="log-item-top"><span class="cat-chip">${s.cat}</span><span style="font-size:11px;padding:2px 7px;border-radius:20px;background:#f5f0ff;color:#6633cc;border:1px solid #c8b0f0;">Mastered ✓</span></div><div class="log-en">"${s.en}"</div>${c.type==="pair"?`<div class="log-vi">→ "${s.vi[c.viIdx]}"</div>`:""}</div>`;}).join("");
+    html+=mastered.map(([id,c])=>{const s=getAllScenarios().find(x=>x.id===c.scenarioId);return`<div class="log-item mastered-item"><div class="log-item-top"><span class="cat-chip">${s.cat}</span><span style="font-size:11px;padding:2px 7px;border-radius:20px;background:#f5f0ff;color:#6633cc;border:1px solid #c8b0f0;">Mastered ✓</span></div><div class="log-en">"${s.en}"</div>${c.type==="pair"?`<div class="log-vi">→ "${s.vi[c.viIdx]}"</div>`:""}</div>`;}).join("");
   }
   if(active.length===0&&mastered.length===0)html+=`<div class="log-empty">No data yet — start practicing!</div>`;
   area.innerHTML=html;
@@ -873,11 +972,21 @@ async function clearAll(){
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
-syncLoad().then(()=>{
+syncLoad().then(async ()=>{
+  // Load AI scenarios first
+  loadAIScenarios();
   // Restore doneToday from localStorage
   const savedDone=parseInt(localStorage.getItem("ba_done_"+todayStr()))||0;
   session.doneToday=savedDone;
-  renderStreakPill();init();
+  renderStreakPill();
+  init();
+  // Generate new scenarios for today (async, won't block UI)
+  if(geminiKey){
+    await generateDailyScenarios();
+    // Re-init to include new scenarios
+    initAllCards();
+    renderTrain();
+  }
 });
 </script>
 </body>
