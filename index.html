@@ -280,6 +280,7 @@ const SCENARIOS = [
 //               failCount, lastScore, lastPattern, mastered, acceptedAnswer }
 
 const PASS_SCORE  = 9;
+const REVIEW_PASS_SCORE = 8; // 80% for review
 const MAX_TRIES   = 999;
 const DAILY_QUOTA = 5;
 const MAX_BACKLOG = 15;
@@ -327,7 +328,7 @@ async function syncLoad(){
         cards[r.id]={
           type:r.type||"scenario", scenarioId:r.scenarioId||r.id,
           viIdx:r.viIdx!==""&&r.viIdx!==undefined?parseInt(r.viIdx):-1,
-          box:parseInt(r.box)||1, nextReview:r.nextReview||todayStr(),
+          box:parseInt(r.box)||1, nextReview:(r.nextReview||todayStr()).slice(0,10),
           failCount:parseInt(r.failCount)||0, lastScore:parseInt(r.lastScore)||0,
           lastPattern:r.lastPattern||"", mastered:r.mastered==="true"||r.mastered===true,
           acceptedAnswer:r.acceptedAnswer||""
@@ -350,6 +351,7 @@ async function syncSaveCard(id){
     body:JSON.stringify({action:"saveCard",entry:(()=>{
       const s=SCENARIOS.find(x=>x.id===c.scenarioId);
       return {id,...c,
+        nextReview:(c.nextReview||todayStr()).slice(0,10),
         en:s?s.en:"",
         vi:(c.type==="pair"&&s)?s.vi[c.viIdx]:"",
         acceptedAnswer:c.acceptedAnswer||""};
@@ -518,7 +520,7 @@ function renderPairStep(area,banner,c){
   const s=SCENARIOS.find(x=>x.id===c.scenarioId);
   const viText=s.vi[c.viIdx];
   const pid=c.scenarioId+"_"+c.viIdx;
-  const gtHtml=c.acceptedAnswer?`<div class="gt-box"><div class="gt-label">Previously accepted answer:</div><div class="gt-item">"${c.acceptedAnswer}"</div></div>`:"";
+  const gtHtml=""; // Hidden before submit — shown in feedback after checking
   const prog=`<div class="prog-row">${session.queue.map((_,i)=>{let cl="pdot";if(i<session.cur)cl+=" done";else if(i===session.cur)cl+=" cur";return`<div class="${cl}"></div>`;}).join("")}</div>`;
   area.innerHTML=banner+prog+`
     <div class="scene-box">
@@ -544,6 +546,36 @@ function renderPairStep(area,banner,c){
 }
 
 // ── AI CALL ───────────────────────────────────────────────────────────────
+async function callReviewAI(en,cat,viText,val,acceptedAnswer){
+  // Review mode: compare with accepted answer, score 1-10
+  // If fail: point out differences WITHOUT revealing full answer
+  const prompt=`You are an English writing coach for a Vietnamese BA using Microsoft Teams.
+
+Colleague's message: "${en}"
+Category: ${cat}
+Vietnamese meaning: "${viText}"
+Reference answer (DO NOT reveal this to user if score < 8): "${acceptedAnswer}"
+User's attempt: "${val}"
+
+Compare user's attempt with the reference answer. Score 1-10 based on:
+- Grammar correctness (40%)
+- Similar meaning and professionalism (40%)  
+- Appropriate Teams tone (20%)
+
+If score >= 8: user passes. You CAN reveal the reference answer.
+If score < 8: DO NOT reveal the reference answer. Only hint at differences.
+
+JSON only, no markdown:
+{"score":<1-10>,"passed":<true/false>,"strengths":"<one short Vietnamese sentence or empty>","diff_hint":"<if score<8: Vietnamese hint about what's different/missing WITHOUT showing the answer. If score>=8: empty>","accepted_answer":"<if score>=8: the reference answer. If score<8: empty string>"}`;
+
+  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiKey}`,
+    {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+  const data=await res.json();
+  if(data.error)throw new Error(data.error.message||"API error");
+  const raw=(data.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
+  return JSON.parse(raw);
+}
+
 async function callAI(en,cat,viText,val,groundTruth){
   const gtCtx=groundTruth?`Previously accepted answer for reference: "${groundTruth}". `: "";
   const prompt=`You are an English writing coach for a Vietnamese BA using Microsoft Teams.
@@ -719,7 +751,7 @@ function renderRevCard(){
   const {id,c}=revQueue[revCur];
   const s=SCENARIOS.find(x=>x.id===c.scenarioId);
   const viText=c.type==="pair"?s.vi[c.viIdx]:null;
-  const gtHtml=c.acceptedAnswer?`<div class="gt-box"><div class="gt-label">Previously accepted:</div><div class="gt-item">"${c.acceptedAnswer}"</div></div>`:"";
+  const gtHtml=""; // Hidden before submit — shown in feedback after checking
   area.innerHTML=`
     <div class="scene-box">
       <div class="scene-meta"><span class="cat-chip">${s.cat}</span><span class="box-chip box-${c.box}">Box ${c.box}</span>${revAttempts>0?`<span class="retry-chip">Attempt ${revAttempts+1}/${MAX_TRIES}</span>`:""}</div>
@@ -745,33 +777,59 @@ async function submitRev(){
   busy=true;
   document.getElementById("rev-btn").disabled=true;
   document.getElementById("rev-input").disabled=true;
-  document.getElementById("rev-fb").innerHTML=`<div class="loading-row"><div class="spin"></div><div class="spin-txt">Checking…</div></div>`;
+  document.getElementById("rev-fb").innerHTML='<div class="loading-row"><div class="spin"></div><div class="spin-txt">Đang chấm điểm…</div></div>';
   const {id,c}=revQueue[revCur];
   const s=SCENARIOS.find(x=>x.id===c.scenarioId);
   const viText=c.type==="pair"?s.vi[c.viIdx]:"";
   revAttempts++;
   try{
-    const fb=await callAI(s.en,s.cat,viText,val,c.acceptedAnswer||"");
+    const fb=await callReviewAI(s.en,s.cat,viText,val,c.acceptedAnswer||"");
     const score=Math.max(1,Math.min(10,parseInt(fb.score)||5));
-    const passed=score>=PASS_SCORE;
+    const passed=score>=REVIEW_PASS_SCORE;
     const oldBox=c.box;
-    let moveHtml="",actionHtml="";
+    let moveHtml="",actionHtml="",refHtml="";
+
     if(passed){
+      // Pass: update card, show reference answer
       if(c.acceptedAnswer!==undefined)c.acceptedAnswer=val;
       if(c.box>=5)c.mastered=true;else c.box=Math.min(5,c.box+1);
       c.nextReview=addDays(todayStr(),BOX_INT[c.box]);c.lastScore=score;
       syncSaveCard(id);renderReviewBadge();
-      if(c.mastered)moveHtml=`<div class="fb-move mastered">Mastered!</div>`;
-      else moveHtml=`<div class="fb-move up">Box ${oldBox} → Box ${c.box} · next ${nextLabel(c.nextReview)}</div>`;
-      actionHtml=`<div class="act-row"><button class="btn-next" onclick="nextRev()">Next →</button></div>`;
+      if(c.mastered)moveHtml='<div class="fb-move mastered">Mastered! 🎉</div>';
+      else moveHtml='<div class="fb-move up">Box '+oldBox+' → Box '+c.box+' · next '+nextLabel(c.nextReview)+'</div>';
+      // Show reference answer on pass
+      if(fb.accepted_answer){
+        refHtml='<div class="gt-box"><div class="gt-label">✅ Câu tham khảo:</div><div class="gt-item">"'+fb.accepted_answer+'"</div></div>';
+      }
+      actionHtml='<div class="act-row"><button class="btn-next" onclick="nextRev()">Next →</button></div>';
     } else {
-      moveHtml=`<div class="fb-move down">Not passing yet</div>`;
-      actionHtml=`<div class="retry-note">Need ${PASS_SCORE}+ — rewrite.</div><div class="act-row"><button class="btn-rewrite" onclick="retryRev()">Rewrite</button></div>`;
+      // Fail: show hint only, NO reference answer
+      moveHtml='<div class="fb-move down">Chưa đạt — cần '+REVIEW_PASS_SCORE+'/10</div>';
+      const hintHtml=fb.diff_hint?'<div class="fb-sec"><div class="fb-lbl">💡 Gợi ý cải thiện</div><div class="fb-txt">'+fb.diff_hint+'</div></div>':"";
+      const strengthHtml=fb.strengths?'<div class="fb-sec"><div class="fb-lbl">Điểm tốt</div><div class="fb-txt">'+fb.strengths+'</div></div>':"";
+      document.getElementById("rev-fb").innerHTML='<div class="fb-box fail">'
+        +'<div class="fb-top"><span class="fb-score">'+score+'/10</span><span class="fb-verdict">Chưa đạt</span></div>'
+        +moveHtml+strengthHtml+hintHtml
+        +'<div class="retry-note">Viết lại — câu mẫu sẽ hiện khi bạn đạt '+REVIEW_PASS_SCORE+'+/10.</div>'
+        +'<div class="act-row"><button class="btn-rewrite" onclick="retryRev()">Viết lại</button></div>'
+        +'</div>';
+      busy=false;
+      return;
     }
-    document.getElementById("rev-fb").innerHTML=fbHtml(fb,score,moveHtml,actionHtml);
+
+    // Pass feedback
+    document.getElementById("rev-fb").innerHTML='<div class="fb-box pass">'
+      +'<div class="fb-top"><span class="fb-score">'+score+'/10</span><span class="fb-verdict">Đạt! ✅</span></div>'
+      +moveHtml
+      +(fb.strengths?'<div class="fb-sec"><div class="fb-lbl">Điểm tốt</div><div class="fb-txt">'+fb.strengths+'</div></div>':"")
+      +refHtml
+      +actionHtml
+      +'</div>';
+
   }catch(e){
-    document.getElementById("rev-fb").innerHTML=`<div style="font-size:13px;color:#c0392b;padding:.5rem 0">${e.message||"Error."}</div>`;
-    document.getElementById("rev-input").disabled=false;document.getElementById("rev-btn").disabled=false;
+    document.getElementById("rev-fb").innerHTML='<div style="font-size:13px;color:#c0392b;padding:.5rem 0">'+(e.message||"Error.")+'</div>';
+    document.getElementById("rev-input").disabled=false;
+    document.getElementById("rev-btn").disabled=false;
   }
   busy=false;
 }
